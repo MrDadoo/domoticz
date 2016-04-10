@@ -2068,6 +2068,16 @@ static PyMethodDef DomoticzMethods[] = {
     {NULL, NULL, 0, NULL}
 };
 
+#if PY_MAJOR_VERSION >= 3
+static struct PyModuleDef DomoticzModule =
+{
+	PyModuleDef_HEAD_INIT,
+	"domoticz_", /* name of module */
+	"",          /* module documentation, may be NULL */
+	-1,          /* size of per-interpreter state of the module, or -1 if the module keeps state in global variables. */
+	DomoticzMethods
+};
+#endif
 
 // from https://gist.github.com/octavifs/5362297
 
@@ -2083,7 +2093,11 @@ boost::python::dict toPythonDict(std::map<K, V> map) {
 
 
 // this should be filled in by the preprocessor
-const char * Python_exe = "PYTHON_EXE";
+#if PY_MAJOR_VERSION >= 3
+wchar_t *Python_exe = Py_DecodeLocale("PYTHON_EXE", NULL);
+#else
+char * Python_exe = "PYTHON_EXE";
+#endif
 
 void CEventSystem::EvaluatePython(const std::string &reason, const std::string &filename, const std::string &PyString, const unsigned long long DeviceID, const std::string &devname, const int nValue, const char* sValue, std::string nValueWording, const unsigned long long varId)
 {
@@ -2099,13 +2113,17 @@ void CEventSystem::EvaluatePython(const std::string &reason, const std::string &
 #endif
 	std::string python_Dir = python_DirT.str();
 	if(!Py_IsInitialized()) {
-		Py_SetProgramName((char*)Python_exe); // will this cast lead to problems ?
+		Py_SetProgramName(Python_exe); // will this cast lead to problems ?
 		Py_Initialize();
+#if PY_MAJOR_VERSION >= 3
+		PyModule_Create(&DomoticzModule);
+#else
 		Py_InitModule("domoticz_", DomoticzMethods);
+#endif
 		// TODO: may have a small memleak, remove references in destructor
 		PyObject* sys = PyImport_ImportModule("sys");
 		PyObject *path = PyObject_GetAttrString(sys, "path");
-		PyList_Append(path, PyString_FromString(python_Dir.c_str()));
+		PyList_Append(path, PyBytes_FromString(python_Dir.c_str()));
 
 		bool (CEventSystem::*ScheduleEventMethod)(std::string ID, const std::string &Action, const std::string &eventName) = &CEventSystem::ScheduleEvent;
 		class_<CEventSystem, boost::noncopyable>("Domoticz", no_init)
